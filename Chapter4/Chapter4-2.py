@@ -1,4 +1,4 @@
-# 策略迭代
+# 价值迭代算法
 
 import copy
 
@@ -37,18 +37,20 @@ class CliffWalkingEnv:
                             reward = -100
                     P[i * self.ncol + j][a] = [(1, next_state, reward, done)]
         return P
-
-class PolicyIteration:
-    """ 策略迭代算法 """
+    
+class ValueIteration:
+    """ 价值迭代算法 """
     def __init__(self, env, theta, gamma):
         self.env = env
         self.v = [0] * self.env.ncol * self.env.nrow  # 初始化价值为0
-        self.pi = [[0.25, 0.25, 0.25, 0.25] for i in range(self.env.ncol * self.env.nrow)]  # 初始化为均匀随机策略
-        self.theta = theta  # 策略评估收敛阈值
-        self.gamma = gamma  # 折扣因子
-
-    def policy_evaluation(self):  # 策略评估
-        cnt = 1  # 计数器
+        self.theta = theta  # 价值收敛阈值
+        self.gamma = gamma
+        # 价值迭代结束后得到的策略
+        self.pi = [None for i in range(self.env.ncol * self.env.nrow)]
+    
+    def value_iteration(self):
+        cnt = 0
+        # 相当于直接找每个状态s下最大的动作价值
         while 1:
             max_diff = 0
             new_v = [0] * self.env.ncol * self.env.nrow
@@ -58,43 +60,32 @@ class PolicyIteration:
                     qsa = 0
                     for res in self.env.P[s][a]:
                         p, next_state, r, done = res
-                        # 这里p好像一直等于1
                         qsa += r + self.gamma * self.v[next_state] * (1 - done)
                         # qsa += p * (r + self.gamma * self.v[next_state] * (1 - done))
-                        # 本章环境比较特殊,奖励和下一个状态有关,所以需要和状态转移概率相乘
-                    qsa_list.append(self.pi[s][a] * qsa)
-                new_v[s] = sum(qsa_list)  # 状态价值函数和动作价值函数之间的关系
+                    qsa_list.append(qsa)  # 这一行和下一行代码是价值迭代和策略迭代的主要区别
+                new_v[s] = max(qsa_list)
                 max_diff = max(max_diff, abs(new_v[s] - self.v[s]))
             self.v = new_v
             if max_diff < self.theta: break  # 满足收敛条件,退出评估迭代
             cnt += 1
-        print("策略评估进行%d轮后完成" % cnt)
-
-    def policy_improvement(self):  # 策略提升
+        print("价值迭代一共进行%d轮" % cnt)
+        self.get_policy()
+    
+    def get_policy(self):  # 根据价值函数导出一个贪婪策略
+        # 根据贝尔曼最优方程，此时最优状态价值是选择此时使最优动作价值最大的那一个动作时的状态价值
         for s in range(self.env.nrow * self.env.ncol):
             qsa_list = []
             for a in range(4):
                 qsa = 0
                 for res in self.env.P[s][a]:
                     p, next_state, r, done = res
-                    qsa += r + self.gamma * self.v[next_state] * (1 - done)
-                    # qsa += p * (r + self.gamma * self.v[next_state] * (1 - done))
-                qsa_list.append(qsa)
-            maxq = max(qsa_list)
+                    qsa += p * (r + self.gamma * self.v[next_state] * (1 - done))
+                qsa_list.append(qsa) 
+            maxq = max(qsa_list) # 找到使最优动作价值最大的那一个动作
             cntq = qsa_list.count(maxq)  # 计算有几个动作得到了最大的Q值
             # 让这些动作均分概率
             self.pi[s] = [1 / cntq if q == maxq else 0 for q in qsa_list]
-        print("策略提升完成")
-        return self.pi
     
-    def policy_iteration(self):  # 策略迭代
-        while 1:
-            # 先更新状态价值函数V，再贪心选择每个状态最大动作价值Q，，然后更新策略pi
-            self.policy_evaluation()
-            old_pi = copy.deepcopy(self.pi)  # 将列表进行深拷贝,方便接下来进行比较
-            new_pi = self.policy_improvement()
-            if old_pi == new_pi: break
-
     def print_agent(self, agent, action_meaning, disaster=[], end=[]):
         print("状态价值：")
         for i in range(agent.env.nrow):
@@ -120,15 +111,11 @@ class PolicyIteration:
                     print(pi_str, end=' ')
             print()
 
-# 现在我们已经写好了环境代码和策略迭代代码。为了更好地展现最终的策略，
-# 接下来增加一个打印策略的函数，用于打印当前策略在每个状态下的价值以及智能体会采取的动作。对于打印出来的动作，
-# 我们用^o<o表示等概率采取向左和向上两种动作，ooo>表示在当前状态只采取向右动作。
-
 if __name__ == "__main__":
     env = CliffWalkingEnv()
     action_meaning = ['^', 'v', '<', '>']
     theta = 0.001
     gamma = 0.9
-    agent = PolicyIteration(env, theta, gamma)
-    agent.policy_iteration()
+    agent = ValueIteration(env, theta, gamma)
+    agent.value_iteration()
     agent.print_agent(agent, action_meaning, list(range(37, 47)), [47])
