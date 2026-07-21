@@ -1,8 +1,12 @@
 import sys
 sys.path.append("E:/pythonProject/Hands-on-RL")
+sys.path.append("/workspace/Quant/Hands-on-RL")
 
 import random
-import gym
+# import gym
+# 当前环境中的 NumPy 版本是 2.0 或以上，而旧版的 gym 库已经不兼容 NumPy 2.0（NumPy 2.0 移除了 np.bool8 属性，导致 gym 内部校验时崩溃）。
+# 正如报错信息第一行官方提示的那样，最完美、最彻底的解决方法是将 gym 替换为其官方维护的升级版 gymnasium。它们的 API 几乎完全一致，且完美支持新版 NumPy。
+import gymnasium as gym  # <--- 修改点 1：使用 gymnasium，
 import numpy as np
 import collections
 from tqdm import tqdm
@@ -60,13 +64,21 @@ class DQN:
         self.count = 0  # 计数器,记录更新次数
         self.device = device
         
+    # def take_action(self, state):  # epsilon-贪婪策略采取动作
+    #     if np.random.random() < self.epsilon:
+    #         action = np.random.randint(self.action_dim)
+    #     else:
+    #         state = torch.tensor([state], dtype=torch.float).to(self.device)
+    #         action = self.q_net(state).argmax().item()
+    #     return action    
     def take_action(self, state):  # epsilon-贪婪策略采取动作
         if np.random.random() < self.epsilon:
             action = np.random.randint(self.action_dim)
         else:
-            state = torch.tensor([state], dtype=torch.float).to(self.device)
-            action = self.q_net(state).argmax().item()
-        return action    
+            # 优化：使用 as_tensor 避免 list 嵌套 numpy array 导致的缓慢转换警告
+            state_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            action = self.q_net(state_tensor).argmax().item()
+        return action
     
     def update(self, transition_dict):
         states = torch.tensor(transition_dict['states'],
