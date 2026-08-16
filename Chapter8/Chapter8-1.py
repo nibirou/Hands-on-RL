@@ -5,6 +5,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("E:/pythonProject/Hands-on-RL")
+sys.path.append("/workspace/Quant/Hands-on-RL")
+
 import rl_utils
 from tqdm import tqdm
 
@@ -108,14 +112,15 @@ def train_DQN(agent, env, num_episodes, replay_buffer, minimal_size,
                 desc='Iteration %d' % i) as pbar:
             for i_episode in range(int(num_episodes / 10)):
                 episode_return = 0
-                state = env.reset()
+                state, _ = env.reset()          # ← 修改：gymnasium 返回元组
                 done = False
                 while not done:
                     action = agent.take_action(state)
-                    max_q_value = agent.max_q_value(state) * 0.005 + max_q_value * 0.995  # 平滑处理
-                    max_q_value_list.append(max_q_value)  # 保存每个状态的最大Q值
+                    max_q_value = agent.max_q_value(state) * 0.005 + max_q_value * 0.995
+                    max_q_value_list.append(max_q_value)
                     action_continuous = dis_to_con(action, env, agent.action_dim)
-                    next_state, reward, done, _ = env.step([action_continuous])
+                    next_state, reward, terminated, truncated, _ = env.step([action_continuous])  # ← 修改：五元组
+                    done = terminated or truncated                                              # ← 修改
                     replay_buffer.add(state, action, reward, next_state, done)
                     state = next_state
                     episode_return += reward
@@ -137,9 +142,8 @@ def train_DQN(agent, env, num_episodes, replay_buffer, minimal_size,
                         'return':
                         '%.3f' % np.mean(return_list[-10:])
                     })
-                    pbar.update(1)
+                pbar.update(1)
     return return_list, max_q_value_list
-
 
 
 if __name__ == "__main__":
@@ -154,70 +158,60 @@ if __name__ == "__main__":
     batch_size = 64
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    env_name = 'Pendulum-v0'
+    env_name = 'Pendulum-v1'                    # ← 修改：v0 → v1
     env = gym.make(env_name)
     state_dim = env.observation_space.shape[0]
-    action_dim = 11  # 将连续动作分成11个离散动作
+    action_dim = 11
 
-    # 一切就绪！我们首先训练 DQN 并打印出其学习过程中最大值的情况。
+    # ---- DQN ----
     random.seed(0)
     np.random.seed(0)
-    env.seed(0)
     torch.manual_seed(0)
+    env.reset(seed=0)                           # ← 修改：替代 env.seed(0)
     replay_buffer = rl_utils.ReplayBuffer(buffer_size)
     agent = DQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
                 target_update, device)
     return_list, max_q_value_list = train_DQN(agent, env, num_episodes,
-                                          replay_buffer, minimal_size,
-                                          batch_size)
+                                          replay_buffer, minimal_size, batch_size)
     episodes_list = list(range(len(return_list)))
     mv_return = rl_utils.moving_average(return_list, 5)
     plt.plot(episodes_list, mv_return)
-    plt.xlabel('Episodes')
-    plt.ylabel('Returns')
+    plt.xlabel('Episodes'); plt.ylabel('Returns')
     plt.title('DQN on {}'.format(env_name))
-    # plt.show()
-    plt.savefig("./Chapter8/8_DQN_on_Pendulum-v0_return.png")
+    plt.savefig("./Chapter8/8_DQN_on_Pendulum-v1_return.png")
+    plt.clf()
 
     frames_list = list(range(len(max_q_value_list)))
     plt.plot(frames_list, max_q_value_list)
     plt.axhline(0, c='orange', ls='--')
     plt.axhline(10, c='red', ls='--')
-    plt.xlabel('Frames')
-    plt.ylabel('Q value')
+    plt.xlabel('Frames'); plt.ylabel('Q value')
     plt.title('DQN on {}'.format(env_name))
-    # plt.show()
-    plt.savefig("./Chapter8/8_DQN_on_Pendulum-v0_Qvalue.png")
+    plt.savefig("./Chapter8/8_DQN_on_Pendulum-v1_Qvalue.png")
+    plt.clf()
 
-    # 根据代码运行结果我们可以发现，DQN 算法在倒立摆环境中能取得不错的回报，
-    # 最后的期望回报在-200 左右，但是不少值超过了 0，有一些还超过了 10，
-    # 该现象便是 DQN 算法中的值过高估计。我们现在来看一下 Double DQN 是否能
-    # 对此问题进行改善。
+    # ---- Double DQN ----
     random.seed(0)
     np.random.seed(0)
-    env.seed(0)
     torch.manual_seed(0)
+    env.reset(seed=0)                           # ← 修改：替代 env.seed(0)
     replay_buffer = rl_utils.ReplayBuffer(buffer_size)
     agent = DQN(state_dim, hidden_dim, action_dim, lr, gamma, epsilon,
                 target_update, device, 'DoubleDQN')
     return_list, max_q_value_list = train_DQN(agent, env, num_episodes,
-                                          replay_buffer, minimal_size,
-                                          batch_size)
+                                          replay_buffer, minimal_size, batch_size)
     episodes_list = list(range(len(return_list)))
     mv_return = rl_utils.moving_average(return_list, 5)
     plt.plot(episodes_list, mv_return)
-    plt.xlabel('Episodes')
-    plt.ylabel('Returns')
+    plt.xlabel('Episodes'); plt.ylabel('Returns')
     plt.title('Double DQN on {}'.format(env_name))
-    # plt.show()
-    plt.savefig("./Chapter8/8_Double_DQN_on_Pendulum-v0_return.png")
+    plt.savefig("./Chapter8/8_Double_DQN_on_Pendulum-v1_return.png")
+    plt.clf()
 
     frames_list = list(range(len(max_q_value_list)))
     plt.plot(frames_list, max_q_value_list)
     plt.axhline(0, c='orange', ls='--')
     plt.axhline(10, c='red', ls='--')
-    plt.xlabel('Frames')
-    plt.ylabel('Q value')
+    plt.xlabel('Frames'); plt.ylabel('Q value')
     plt.title('Double DQN on {}'.format(env_name))
-    # plt.show()
-    plt.savefig("./Chapter8/8_Double_DQN_on_Pendulum-v0_return.png")
+    plt.savefig("./Chapter8/8_Double_DQN_on_Pendulum-v1_Qvalue.png")
